@@ -35,14 +35,7 @@ pub type GameState {
   )
 }
 
-fn increment(value: Option(Int)) {
-  case value {
-    Some(v) -> v + 1
-    None -> 1
-  }
-}
-
-pub fn place_piece(
+pub fn play_turn(
   state: GameState,
   coord: Coordinate,
 ) -> Result(GameState, String) {
@@ -141,4 +134,11 @@ pub fn switch_player(state: GameState) -> GameState {
     O -> X
   }
   GameState(..state, current_player: next_player)
+}
+
+fn increment(value: Option(Int)) {
+  case value {
+    Some(v) -> v + 1
+    None -> 1
+  }
 }

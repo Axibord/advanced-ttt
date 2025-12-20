@@ -3,7 +3,8 @@ import game_logic.{
   X,
 }
 import gleam/dict
-import gleam/io.{println}
+import gleam/io
+import gleam/result
 import renderer
 
 pub fn main() {
@@ -29,46 +30,41 @@ fn init_game(size: Int) -> GameState {
 }
 
 fn game_loop(state: GameState) {
-  println("")
+  io.println("")
   renderer.render_board(state)
-  println("")
-  println(
+  io.println("")
+  io.println(
     "Player " <> renderer.player_to_string(state.current_player) <> "'s turn.",
   )
 
-  case renderer.get_player_input() {
-    Ok(coord) -> {
-      case game_logic.place_piece(state, coord) {
-        Ok(new_state) -> {
-          let status = game_logic.check_game_status(new_state, coord)
-          case status {
-            Ongoing -> game_loop(game_logic.switch_player(new_state))
-            Won(p) -> {
-              println("")
-              renderer.render_board(new_state)
-              println("")
-              println(
-                "Congratulations! Player "
-                <> renderer.player_to_string(p)
-                <> " wins!",
-              )
-            }
-            Draw -> {
-              println("")
-              renderer.render_board(new_state)
-              println("")
-              println("It's a draw!")
-            }
-          }
+  let played_turn = {
+    use coord <- result.try(renderer.get_player_input())
+    use new_state <- result.try(game_logic.play_turn(state, coord))
+    Ok(#(new_state, coord))
+  }
+
+  case played_turn {
+    Ok(#(new_state, coord)) -> {
+      case game_logic.check_game_status(new_state, coord) {
+        Ongoing -> game_loop(game_logic.switch_player(new_state))
+        Won(player) -> {
+          io.println("")
+          renderer.render_board(new_state)
+          io.println(
+            "\nCongratulations! Player "
+            <> renderer.player_to_string(player)
+            <> " wins!",
+          )
         }
-        Error(err) -> {
-          println("Error: " <> err)
-          game_loop(state)
+        Draw -> {
+          io.println("")
+          renderer.render_board(new_state)
+          io.println("\nIt's a draw!")
         }
       }
     }
     Error(err) -> {
-      println("Error: " <> err)
+      io.println("Error: " <> err)
       game_loop(state)
     }
   }
