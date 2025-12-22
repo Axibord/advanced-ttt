@@ -1,4 +1,5 @@
 import gleam/dict.{type Dict}
+import gleam/list
 import gleam/option.{type Option, None, Some}
 
 pub type Player {
@@ -12,13 +13,25 @@ pub type GameStatus {
   Draw
 }
 
+pub type GameMode {
+  Standard
+  LShape
+}
+
 pub type Coordinate =
   #(Int, Int)
+
+type LShapes =
+  Dict(Int, List(List(Coordinate)))
+
+type LShapesCounter =
+  Dict(Int, Int)
 
 pub type PlayerStats {
   PlayerStats(
     rows: Dict(Int, Int),
     cols: Dict(Int, Int),
+    l_shapes_counter: LShapesCounter,
     diag: Int,
     diag_reverse: Int,
   )
@@ -29,103 +42,243 @@ pub type GameState {
     x_stats: PlayerStats,
     o_stats: PlayerStats,
     board: Dict(Coordinate, Player),
+    l_shapes: LShapes,
     size: Int,
     current_player: Player,
+    mode: GameMode,
     moves_count: Int,
   )
 }
 
 pub fn play_turn(
-  state: GameState,
+  game_state: GameState,
   coord: Coordinate,
 ) -> Result(GameState, String) {
-  let #(row, col) = coord
+  let #(r, c) = coord
 
   let is_out_of_bounds =
-    row < 0 || row >= state.size || col < 0 || col >= state.size
+    r < 0 || r >= game_state.size || c < 0 || c >= game_state.size
 
   case is_out_of_bounds {
     True -> Error("Coordinates out of bounds")
     False -> {
-      // Check if occupied
-      case dict.get(state.board, coord) {
+      case dict.get(game_state.board, coord) {
         Ok(_) -> Error("Cell already occupied")
         Error(Nil) -> {
-          let player = state.current_player
-          let stats = case player {
-            X -> state.x_stats
-            O -> state.o_stats
+          let player = game_state.current_player
+          let player_stats = case player {
+            X -> game_state.x_stats
+            O -> game_state.o_stats
           }
+          let size = game_state.size
 
-          // Update player stats
-          let new_rows = dict.upsert(stats.rows, row, increment)
-          let new_cols = dict.upsert(stats.cols, col, increment)
-          let new_diag = case row == col {
-            True -> stats.diag + 1
-            False -> stats.diag
-          }
-          let new_diag_reverse = case row + col == state.size - 1 {
-            True -> stats.diag_reverse + 1
-            False -> stats.diag_reverse
-          }
+          let updated_player_stats =
+            update_stats(game_state, player_stats, #(r, c), size)
 
-          let new_player_stats =
-            PlayerStats(new_rows, new_cols, new_diag, new_diag_reverse)
+          let new_board = dict.insert(game_state.board, coord, player)
+          let new_moves_count = game_state.moves_count + 1
 
-          let new_board = dict.insert(state.board, coord, player)
-          let new_moves_count = state.moves_count + 1
-
-          let new_state = case player {
+          let updated_game_state = case player {
             X ->
               GameState(
-                ..state,
-                x_stats: new_player_stats,
+                ..game_state,
+                x_stats: updated_player_stats,
                 board: new_board,
                 moves_count: new_moves_count,
               )
             O ->
               GameState(
-                ..state,
-                o_stats: new_player_stats,
+                ..game_state,
+                o_stats: updated_player_stats,
                 board: new_board,
                 moves_count: new_moves_count,
               )
           }
 
-          Ok(new_state)
+          Ok(updated_game_state)
         }
       }
     }
   }
 }
 
-pub fn check_game_status(state: GameState, last_move: Coordinate) -> GameStatus {
+fn update_stats(
+  game_state: GameState,
+  player_stats: PlayerStats,
+  coord: Coordinate,
+  size: Int,
+) {
+  case game_state.mode {
+    Standard -> {
+      let #(row, col) = coord
+      let rows = dict.upsert(player_stats.rows, row, increment)
+      let cols = dict.upsert(player_stats.cols, col, increment)
+      let diag = case row == col {
+        True -> player_stats.diag + 1
+        False -> player_stats.diag
+      }
+      let diag_reverse = case row + col == size - 1 {
+        True -> player_stats.diag_reverse + 1
+        False -> player_stats.diag_reverse
+      }
+
+      PlayerStats(..player_stats, rows:, cols:, diag:, diag_reverse:)
+    }
+
+    LShape -> {
+      let l_shapes_counter =
+        increment_count_matching_l_shapes(
+          coord,
+          player_stats.l_shapes_counter,
+          game_state.l_shapes,
+        )
+      PlayerStats(..player_stats, l_shapes_counter:)
+    }
+  }
+}
+
+pub fn check_game_status(
+  game_state: GameState,
+  last_move: Coordinate,
+) -> GameStatus {
   let #(row, col) = last_move
-  let player = case dict.get(state.board, last_move) {
+  let player = case dict.get(game_state.board, last_move) {
     Ok(p) -> p
-    Error(Nil) -> state.current_player
+    Error(Nil) -> game_state.current_player
   }
 
-  let stats = case player {
-    X -> state.x_stats
-    O -> state.o_stats
+  let player_stats = case player {
+    X -> game_state.x_stats
+    O -> game_state.o_stats
   }
 
-  let won =
-    dict.get(stats.rows, row) == Ok(state.size)
-    || dict.get(stats.cols, col) == Ok(state.size)
-    || stats.diag == state.size
-    || stats.diag_reverse == state.size
+  let won = {
+    case game_state.mode {
+      Standard -> {
+        dict.get(player_stats.rows, row) == Ok(game_state.size)
+        || dict.get(player_stats.cols, col) == Ok(game_state.size)
+        || player_stats.diag == game_state.size
+        || player_stats.diag_reverse == game_state.size
+      }
+      LShape ->
+        has_completed_l_shape(player_stats.l_shapes_counter, game_state.size)
+    }
+  }
 
   case won {
     True -> Won(player)
     False -> {
-      case state.moves_count == state.size * state.size {
+      case game_state.moves_count == game_state.size * game_state.size {
         True -> Draw
         False -> Ongoing
       }
     }
   }
+}
+
+fn has_completed_l_shape(lshapes_counter: LShapesCounter, size: Int) -> Bool {
+  let l_size = { 2 * size } - 4
+  lshapes_counter
+  |> dict.values()
+  |> list.any(fn(v) { v == l_size })
+}
+
+fn increment_count_matching_l_shapes(
+  coord: Coordinate,
+  l_shapes_counter: LShapesCounter,
+  l_shapes: LShapes,
+) -> LShapesCounter {
+  use l_shapes_counter, l_shape_id, l_shapes_unique <- dict.fold(
+    over: l_shapes,
+    from: l_shapes_counter,
+  )
+
+  let is_part_of_lshape = {
+    use l_shape_coords <- list.find(l_shapes_unique)
+    use l_shape_coordinate <- list.any(l_shape_coords)
+    l_shape_coordinate == coord
+  }
+
+  case is_part_of_lshape {
+    Ok(_) -> dict.upsert(l_shapes_counter, l_shape_id, increment)
+    Error(Nil) -> l_shapes_counter
+  }
+}
+
+pub fn build_l_shapes(size: Int) -> LShapes {
+  let coords = build_coordinates(size)
+
+  use l_shapes, #(r, c), l_shape_id <- list.index_fold(coords, dict.new())
+
+  let arrival_coords = calculate_l_arrival_coords(#(r, c), size)
+  let l_paths = generate_l_paths(#(r, c), arrival_coords)
+
+  dict.upsert(l_shapes, l_shape_id, fn(_) { l_paths })
+}
+
+fn generate_l_paths(
+  start: Coordinate,
+  arrivals: List(Coordinate),
+) -> List(List(Coordinate)) {
+  let #(r_start, c_start) = start
+  use arrival_coord <- list.flat_map(arrivals)
+
+  let #(r_end, c_end) = arrival_coord
+
+  // Horizontal then Vertical
+  let path_a =
+    list.flatten([
+      list.range(c_start, c_end) |> list.map(fn(c) { #(r_start, c) }),
+      list.range(r_start, r_end)
+        |> list.filter(fn(r) { r != r_start })
+        |> list.map(fn(r) { #(r, c_end) }),
+    ])
+
+  // Vertical then Horizontal
+  let path_b =
+    list.flatten([
+      list.range(r_start, r_end) |> list.map(fn(r) { #(r, c_start) }),
+      list.range(c_start, c_end)
+        |> list.filter(fn(c) { c != c_start })
+        |> list.map(fn(c) { #(r_end, c) }),
+    ])
+
+  [path_a, path_b]
+}
+
+fn calculate_l_arrival_coords(coord: Coordinate, size: Int) -> List(Coordinate) {
+  let #(r, c) = coord
+  let d1 = size - 2
+  let d2 = size - 3
+  // from any point (r,c) we can have a max of 8 moves
+  let moves: List(Coordinate) = [
+    #(d1, d2),
+    #(d1, -d2),
+    #(-d1, d2),
+    #(-d1, -d2),
+    #(d2, d1),
+    #(d2, -d1),
+    #(-d2, d1),
+    #(-d2, -d1),
+  ]
+
+  moves
+  |> list.map(fn(move) { #(r + move.0, c + move.1) })
+  |> list.filter(fn(coord) {
+    { coord.0 >= 0 && coord.0 < size } && { coord.1 >= 0 && coord.1 < size }
+  })
+}
+
+fn build_coordinates(size: Int) -> List(Coordinate) {
+  let pairs_1 = list.range(0, size - 1)
+  let pairs_2 = list.reverse(pairs_1)
+  let combinations_1 = list.combination_pairs(pairs_1)
+  let combinations_2 = list.combination_pairs(pairs_2)
+  let diag = list.map(list.range(0, size - 1), fn(i) { #(i, i) })
+
+  combinations_1
+  |> list.append(combinations_2)
+  |> list.append(diag)
 }
 
 pub fn switch_player(state: GameState) -> GameState {

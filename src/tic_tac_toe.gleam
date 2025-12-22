@@ -1,6 +1,6 @@
 import game_logic.{
-  type GameState, type PlayerStats, Draw, GameState, Ongoing, PlayerStats, Won,
-  X,
+  type GameMode, type GameState, type PlayerStats, Draw, GameState, LShape,
+  Ongoing, PlayerStats, Standard, Won, X,
 }
 import gleam/dict
 import gleam/io
@@ -8,14 +8,20 @@ import gleam/result
 import renderer
 
 pub fn main() {
-  io.println("Welcome to Tic-Tac-Toe!")
+  io.println("Welcome to Advanced Tic-Tac-Toe!")
   let size = 3
   let game = init_game(size)
   game_loop(game)
 }
 
 fn init_stats() -> PlayerStats {
-  PlayerStats(rows: dict.new(), cols: dict.new(), diag: 0, diag_reverse: 0)
+  PlayerStats(
+    rows: dict.new(),
+    cols: dict.new(),
+    l_shapes_counter: dict.new(),
+    diag: 0,
+    diag_reverse: 0,
+  )
 }
 
 fn init_game(size: Int) -> GameState {
@@ -24,7 +30,9 @@ fn init_game(size: Int) -> GameState {
     o_stats: init_stats(),
     board: dict.new(),
     size: size,
+    l_shapes: game_logic.build_l_shapes(size),
     current_player: X,
+    mode: Standard,
     moves_count: 0,
   )
 }
