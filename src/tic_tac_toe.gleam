@@ -1,6 +1,6 @@
 import game_logic.{
-  type GameMode, type GameState, type PlayerStats, Draw, GameState, LShape,
-  Ongoing, PlayerStats, Standard, Won, X,
+  type GameMode, type GameState, type PlayerStats, Draw, GameState, O, Ongoing,
+  PlayerStats, Won, X,
 }
 import gleam/dict
 import gleam/io
@@ -9,8 +9,16 @@ import renderer
 
 pub fn main() {
   io.println("Welcome to Advanced Tic-Tac-Toe!")
-  let size = 3
-  let game = init_game(size)
+
+  let p1_name = renderer.get_player_name("Player 1 (X)")
+  let p2_name = renderer.get_player_name("Player 2 (O)")
+
+  let mode = renderer.get_game_mode()
+
+  let size = renderer.get_board_size(mode)
+
+  let game = init_game(size, mode, p1_name, p2_name)
+
   game_loop(game)
 }
 
@@ -24,7 +32,14 @@ fn init_stats() -> PlayerStats {
   )
 }
 
-fn init_game(size: Int) -> GameState {
+fn init_game(
+  size: Int,
+  mode: GameMode,
+  p1_name: String,
+  p2_name: String,
+) -> GameState {
+  let player_names = dict.from_list([#(X, p1_name), #(O, p2_name)])
+
   GameState(
     x_stats: init_stats(),
     o_stats: init_stats(),
@@ -32,8 +47,9 @@ fn init_game(size: Int) -> GameState {
     size: size,
     l_shapes: game_logic.build_l_shapes(size),
     current_player: X,
-    mode: Standard,
+    mode: mode,
     moves_count: 0,
+    player_names: player_names,
   )
 }
 
@@ -42,7 +58,9 @@ fn game_loop(state: GameState) {
   renderer.render_board(state)
   io.println("")
   io.println(
-    "Player " <> renderer.player_to_string(state.current_player) <> "'s turn.",
+    "Player "
+    <> renderer.player_to_string(state, state.current_player)
+    <> "'s turn.",
   )
 
   let played_turn = {
@@ -60,7 +78,7 @@ fn game_loop(state: GameState) {
           renderer.render_board(new_state)
           io.println(
             "\nCongratulations! Player "
-            <> renderer.player_to_string(player)
+            <> renderer.player_to_string(new_state, player)
             <> " wins!",
           )
         }

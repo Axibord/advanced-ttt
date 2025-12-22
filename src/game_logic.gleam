@@ -47,6 +47,7 @@ pub type GameState {
     current_player: Player,
     mode: GameMode,
     moves_count: Int,
+    player_names: Dict(Player, String),
   )
 }
 

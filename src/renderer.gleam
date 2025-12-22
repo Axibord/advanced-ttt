@@ -1,4 +1,6 @@
-import game_logic.{type GameState, type Player, O, X}
+import game_logic.{
+  type GameMode, type GameState, type Player, LShape, O, Standard, X,
+}
 import gleam/dict
 import gleam/int
 import gleam/io
@@ -52,9 +54,63 @@ pub fn get_player_input() -> Result(#(Int, Int), String) {
   }
 }
 
-pub fn player_to_string(p: Player) -> String {
-  case p {
-    X -> "X"
-    O -> "O"
+pub fn get_player_name(prompt_prefix: String) -> String {
+  case input(prompt: prompt_prefix <> " name: ") {
+    Ok(name) ->
+      case string.trim(name) {
+        "" -> get_player_name(prompt_prefix)
+        trimmed -> trimmed
+      }
+    Error(_) -> get_player_name(prompt_prefix)
+  }
+}
+
+pub fn get_game_mode() -> GameMode {
+  io.println("Select Game Mode:")
+  io.println("1. Standard")
+  io.println("2. LShape")
+
+  case input(prompt: "Enter choice (1 or 2): ") {
+    Ok("1") -> Standard
+    Ok("2") -> LShape
+    _ -> {
+      io.println("Invalid choice. Please enter 1 or 2.")
+      get_game_mode()
+    }
+  }
+}
+
+pub fn get_board_size(mode: GameMode) -> Int {
+  let min_size = case mode {
+    Standard -> 3
+    LShape -> 4
+  }
+
+  case
+    input(prompt: "Enter board size (min " <> int.to_string(min_size) <> "): ")
+  {
+    Ok(s) -> {
+      case int.parse(s) {
+        Ok(n) if n >= min_size -> n
+        _ -> {
+          io.println(
+            "Invalid size. Must be an integer >= " <> int.to_string(min_size),
+          )
+          get_board_size(mode)
+        }
+      }
+    }
+    Error(_) -> get_board_size(mode)
+  }
+}
+
+pub fn player_to_string(state: GameState, p: Player) -> String {
+  case dict.get(state.player_names, p) {
+    Ok(name) -> name
+    Error(_) ->
+      case p {
+        X -> "X"
+        O -> "O"
+      }
   }
 }
