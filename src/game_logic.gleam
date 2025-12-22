@@ -22,7 +22,7 @@ pub type Coordinate =
   #(Int, Int)
 
 type LShapes =
-  Dict(Int, List(List(Coordinate)))
+  Dict(Int, List(Coordinate))
 
 type LShapesCounter =
   Dict(Int, Int)
@@ -189,32 +189,30 @@ fn increment_count_matching_l_shapes(
   l_shapes_counter: LShapesCounter,
   l_shapes: LShapes,
 ) -> LShapesCounter {
-  use l_shapes_counter, l_shape_id, l_shapes_unique <- dict.fold(
+  use l_shapes_counter, l_shape_id, l_shape_coords <- dict.fold(
     over: l_shapes,
     from: l_shapes_counter,
   )
 
-  let is_part_of_lshape = {
-    use l_shape_coords <- list.find(l_shapes_unique)
-    use l_shape_coordinate <- list.any(l_shape_coords)
-    l_shape_coordinate == coord
-  }
+  let is_part_of_lshape = list.contains(l_shape_coords, coord)
 
   case is_part_of_lshape {
-    Ok(_) -> dict.upsert(l_shapes_counter, l_shape_id, increment)
-    Error(Nil) -> l_shapes_counter
+    True -> dict.upsert(l_shapes_counter, l_shape_id, increment)
+    False -> l_shapes_counter
   }
 }
 
 pub fn build_l_shapes(size: Int) -> LShapes {
   let coords = build_coordinates(size)
 
-  use l_shapes, #(r, c), l_shape_id <- list.index_fold(coords, dict.new())
+  let all_paths = {
+    use coord <- list.flat_map(coords)
+    let arrival_coords = calculate_l_arrival_coords(coord, size)
+    generate_l_paths(coord, arrival_coords)
+  }
 
-  let arrival_coords = calculate_l_arrival_coords(#(r, c), size)
-  let l_paths = generate_l_paths(#(r, c), arrival_coords)
-
-  dict.upsert(l_shapes, l_shape_id, fn(_) { l_paths })
+  use l_shapes, path, l_shape_id <- list.index_fold(all_paths, dict.new())
+  dict.insert(l_shapes, l_shape_id, path)
 }
 
 fn generate_l_paths(
