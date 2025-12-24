@@ -225,31 +225,42 @@ pub fn build_l_shapes(size: Int) -> LShapes {
 }
 
 fn generate_l_paths(
-  start: Coordinate,
+  start_coord: Coordinate,
   arrivals: List(Coordinate),
 ) -> List(List(Coordinate)) {
-  let #(r_start, c_start) = start
+  let #(r_start, c_start) = start_coord
+
   use arrival_coord <- list.flat_map(arrivals)
 
   let #(r_end, c_end) = arrival_coord
 
   // Horizontal then Vertical
-  let path_a =
+  let path_a_task = {
+    use <- taskle.async()
     list.flatten([
       list.range(c_start, c_end) |> list.map(fn(c) { #(r_start, c) }),
       list.range(r_start, r_end)
         |> list.filter(fn(r) { r != r_start })
         |> list.map(fn(r) { #(r, c_end) }),
     ])
-
+  }
   // Vertical then Horizontal
-  let path_b =
+  let path_b_task = {
+    use <- taskle.async()
     list.flatten([
       list.range(r_start, r_end) |> list.map(fn(r) { #(r, c_start) }),
       list.range(c_start, c_end)
         |> list.filter(fn(c) { c != c_start })
         |> list.map(fn(c) { #(r_end, c) }),
     ])
+  }
+
+  let #(path_a, path_b) = {
+    case taskle.await2(path_a_task, path_b_task, 100_000) {
+      Ok(tasks) -> tasks
+      Error(_) -> panic as "Failed to generate L-shape paths"
+    }
+  }
 
   [path_a, path_b]
 }
