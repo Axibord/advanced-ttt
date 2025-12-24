@@ -1,6 +1,7 @@
 import gleam/dict.{type Dict}
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import taskle
 
 pub type Player {
   X
@@ -205,13 +206,21 @@ fn increment_count_matching_l_shapes(
 pub fn build_l_shapes(size: Int) -> LShapes {
   let coords = build_coordinates(size)
 
-  let all_paths = {
-    use coord <- list.flat_map(coords)
-    let arrival_coords = calculate_l_arrival_coords(coord, size)
-    generate_l_paths(coord, arrival_coords)
+  let all_paths_tasks = {
+    use coord <- list.map(coords)
+    let l_paths_given_coord = fn() {
+      let arrival_coords = calculate_l_arrival_coords(coord, size)
+      generate_l_paths(coord, arrival_coords)
+    }
+    taskle.async(l_paths_given_coord)
   }
 
-  use l_shapes, path, l_shape_id <- list.index_fold(all_paths, dict.new())
+  let all_l_paths = case taskle.try_await_all(all_paths_tasks, 100_000) {
+    Ok(v) -> list.flatten(v)
+    Error(_) -> panic as "Failed to build L-shapes"
+  }
+
+  use l_shapes, path, l_shape_id <- list.index_fold(all_l_paths, dict.new())
   dict.insert(l_shapes, l_shape_id, path)
 }
 
@@ -269,11 +278,23 @@ fn calculate_l_arrival_coords(coord: Coordinate, size: Int) -> List(Coordinate) 
 }
 
 fn build_coordinates(size: Int) -> List(Coordinate) {
-  let pairs_1 = list.range(0, size - 1)
-  let pairs_2 = list.reverse(pairs_1)
-  let combinations_1 = list.combination_pairs(pairs_1)
-  let combinations_2 = list.combination_pairs(pairs_2)
-  let diag = list.map(list.range(0, size - 1), fn(i) { #(i, i) })
+  let combinations1_task =
+    taskle.async(fn() { list.range(0, size - 1) |> list.combination_pairs })
+
+  let combinations2_task =
+    taskle.async(fn() { list.range(size - 1, 0) |> list.combination_pairs })
+
+  let diag_task =
+    taskle.async(fn() { list.map(list.range(0, size - 1), fn(i) { #(i, i) }) })
+
+  let #(combinations_1, combinations_2, diag) = {
+    case
+      taskle.await3(combinations1_task, combinations2_task, diag_task, 100_000)
+    {
+      Ok(tasks) -> tasks
+      Error(_) -> panic as "Failed to build coordinates"
+    }
+  }
 
   combinations_1
   |> list.append(combinations_2)
